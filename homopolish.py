@@ -72,10 +72,9 @@ def main():
         fixData.thread = FLAGS.threads 
         fixData.output_dir = FLAGS.output_dir  
         
-        fixData.sib_files = FLAGS.sibilings_files      
+        fixData.homo_files = FLAGS.homologous
         #getPos(fixData,FLAGS.debug)
-        mp.starModpolsh(fixData,FLAGS.debug)
-    
+        mp.startModpolsh(fixData,FLAGS.debug) 
     elif FLAGS.sub_command == 'modpolish_posData':
         if(FLAGS.fastq == "" and FLAGS.bam == ""):
             print("need fastq or bam file!")
