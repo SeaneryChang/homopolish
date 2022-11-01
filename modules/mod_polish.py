@@ -43,7 +43,7 @@ def saveDraftContig(fixData):
   contig_output_filePath=write_for_new_fasta(record,filePath,fixData.contig_id+"_contig")
   return contig_output_filePath
 
-def starModpolsh(fixData,debug_mod):
+def startModpolsh(fixData,debug_mod):
   modpolish_filePath = ""
   contig_fix_ary = []
   fileName = fixData.draft_genome_file.split('/')[-1].split('.')[0]	
@@ -60,6 +60,9 @@ def starModpolsh(fixData,debug_mod):
        os.makedirs(fixData.output_dir+"debug")
   
   
+  #create bam file
+  if(fixData.bamFile == ""):
+      fixData.bamFile = getBamPileUp(fixData,fileName,fixData.thread,fixData.draft_genome_file,fixData.reads_file)
 
   for contig in SeqIO.parse(fixData.draft_genome_file, 'fasta'):
       fixData.contig_id = contig.name#get fa Contig_id
@@ -72,7 +75,7 @@ def starModpolsh(fixData,debug_mod):
 
       #target contig 
       fixData.contig_path = saveDraftContig(fixData)
-
+      ####
       filePath,mod_fix_flag = getPos(fixData,debug_mod)
       contig_fix_ary.append(mod_fix_flag)
       
@@ -92,49 +95,22 @@ def starModpolsh(fixData,debug_mod):
      shutil.rmtree(fixData.output_dir+"debug")
 
 
-def fixFlagFn(fixData,fixPosAry,totalCovergae,fileName):
-   filePath = fixData.output_dir+"debug/"+fixData.contig_id
-   #use expected value: (fixPos/coverage)/length
-   num_fixPos = len(fixPosAry)
-   genLen = len(fixData.seq)   
-   fixFlag = True
-   average_cov  = totalCovergae/genLen
-   fix_expected_val = (num_fixPos/average_cov)/genLen
-   
-   #saveFn csv
-   Fndata = []
-   Fndata.append([average_cov,genLen,num_fixPos,fix_expected_val])
 
-   df = pds.DataFrame(Fndata)
-   df = df.reset_index()
-   if(len(Fndata)!=0):
-     df.columns =["","avg_cov","genLen","num_fixPos","fix_expected_val"]
-   df.to_csv(filePath+"/"+fileName+"_fnFlag.csv",encoding="ascii",index=False)
-   
-   
-   
-   if(fix_expected_val<0.000001):
-     fixFlag = False
-     
-   return True
-
-
-
-def getSibFile(fixData):
+def getHomoFile(fixData):
    file_path = ""
    flag = True
 
-   #use siblings from user side
-   if(fixData.sib_files != ""):
-     for sibFile in fixData.sib_files:
-        file_path = file_path +" "+sibFile
+   #use genomes from user side
+   if(fixData.homo_files != ""):
+     for homoFile in fixData.homo_files:
+        file_path = file_path +" "+homoFile
      
      print(file_path)
      db_path = fixData.output_dir+"debug/"+fixData.contig_id+"/All_homologous_sequences.fna.gz"
      os.system('cat {} > {}'.format(file_path, db_path))
    
    else:
-    #download siblings homogenome file from NCBI
+    #download homogenome file from NCBI
     flag = dlHomoFile(fixData)  
    
    return flag
@@ -147,40 +123,30 @@ def getPos(fixData,debug_mod):
     timestr = time.strftime("[%Y/%m/%d %H:%M]")
     sys.stderr.write(TextColor.GREEN + str(timestr) + " INFO:star modpolish with sequence length: "+ str(len(fixData.seq))  + "\n" + TextColor.END)
     
-    #download siblings files
+    #download homologous genomes files
     timestr = time.strftime("[%Y/%m/%d %H:%M]")
-    sys.stderr.write(TextColor.GREEN + str(timestr) + " INFO:star download Homo sibling files"+ "\n" + TextColor.END)
+    sys.stderr.write(TextColor.GREEN + str(timestr) + " INFO:star download Homologous files"+ "\n" + TextColor.END)
     
-    sib_flag = getSibFile(fixData)
-    if(sib_flag == False):
-      return saveNofixSeq(fixData),True
-    #siblings array  
-    sibPath = fixData.output_dir+"debug/"+fixData.contig_id
-    H_misAry,H_AllAry = getPileUpAry(fixData,sibPath,sibPath+"/All_homologous_sequences.fna.gz")   
+    homo_flag = getHomoFile(fixData)
+    if(homo_flag == False):
+      return saveNofixSeq(fixData),False
+    #homologous  array  
+    homoPath = fixData.output_dir+"debug/"+fixData.contig_id
+    H_misAry,H_AllAry = getPileUpAry(fixData,homoPath,homoPath+"/All_homologous_sequences.fna.gz")   
    
     #Reads array   
     timestr = time.strftime("[%Y/%m/%d %H:%M]")
     sys.stderr.write(TextColor.GREEN + str(timestr) + " INFO:star get Reads File data"+ "\n" + TextColor.END)
-  
-    if(fixData.bamFile != ""):
-        R_misAry_bam,R_AllAry_bam,totalCovergae = MismatchPileup_read_bam(fixData.bamFile,len(fixData.seq))
-    else:
-        bamFile = getBamPileUp(fixData,fileName,fixData.thread,fixData.contig_path,fixData.reads_file)
-        R_misAry_bam,R_AllAry_bam,totalCovergae = MismatchPileup_read_bam(bamFile,len(fixData.seq))
-
-    #use special pattern
-    if(fixData.spPattern == ""):
-        fixary = getMisPosVal(R_misAry_bam,R_AllAry_bam,H_AllAry,fixData.seq) 
-    else:
-        fixary = fix_pos_homo_read_pattern(fixData,H_AllAry,R_misAry_bam,R_AllAry_bam,fixData.spPattern)
     
-    #need to fix?
-    #fixFlag = fixFlagFn(fixData,fixary,totalCovergae,fileName)
-    #if(fixFlag == False):
-    #return saveNofixSeq(fixData),False
+    #get read mis array
+    R_misAry_bam,R_AllAry_bam,totalCovergae = MismatchPileup_read_bam(fixData.bamFile,len(fixData.seq),fixData.seq,fixData.contig_id)
+
+    #check quality and special pattern
+    fixary = fix_pos_homo_read_pattern(fixData,H_AllAry,R_misAry_bam,R_AllAry_bam)
+    
 
     #star fix
-    modpolish_filePath= fixProcess(fixary,H_AllAry,fixData,fileName)
+    modpolish_filePath= fixProcess(fixary,fixData,fileName)
     CSV.getFixPosCSV(fixData.contig_id,fixary,fixData.output_dir)
 
     return modpolish_filePath,True
@@ -227,11 +193,12 @@ def dlHomoFile(fixData:FixSNP):
    fixFlag = True
    filePath = fixData.output_dir+'debug/'+fixData.contig_id
    ncbi_id =  mlp.mash_select_closely_related(fixData.sketch_path,False,fixData.thread,filePath,fixData.mash_threshold,fixData.dl_contig_nums,fixData.contig_path,fixData.contig_id)
+   if(len(ncbi_id) == 0):
+     return False 
    
-   
-   if(len(ncbi_id)<5):
+   if(len(ncbi_id)<2):
     timestr = time.strftime("[%Y/%m/%d %H:%M]")
-    sys.stderr.write(TextColor.PURPLE + str(timestr) + "Closely-related genomes less than 5, not to modpolish...\n" + TextColor.END) 
+    sys.stderr.write(TextColor.PURPLE + str(timestr) + "Closely-related genomes less than 2, not to modpolish...\n" + TextColor.END) 
     fixFlag = False
    
    url_list =  dl.parser_url(ncbi_id)
@@ -241,7 +208,7 @@ def dlHomoFile(fixData:FixSNP):
 
 
 
-def getSibVal(S_PosAry,S_percentRate):  # return Homogenome siblings pos value
+def getHomoVal(S_PosAry,S_percentRate):  # return Homogenome pos value
     Homo_val = ""
     decision_Fix = False
 
@@ -272,6 +239,8 @@ def getSibVal(S_PosAry,S_percentRate):  # return Homogenome siblings pos value
 
 def pattern(ST,local_actg):
     patt = True
+    if(ST == ""):
+        return '',False
     if(ST == 'CCAGC'):
         if(local_actg[0:5] == "CCAAG"):
             value = 'C'
@@ -305,7 +274,7 @@ def pattern(ST,local_actg):
         value = ''
     return value,patt
 
-def fix_pos_homo_read_pattern(fixData,S_AllAry,R_MisAry,R_Ary_bam,ST):
+def fix_pos_homo_read_pattern(fixData,S_AllAry,R_MisAry,R_Ary_bam):
     pos_ary = []
     fix_pass = False
     count = 0
@@ -320,7 +289,7 @@ def fix_pos_homo_read_pattern(fixData,S_AllAry,R_MisAry,R_Ary_bam,ST):
             R_Pos_ATCG = R_Ary_bam[reads_all]
             R_ATCG_Total = R_Pos_ATCG[0][0]+R_Pos_ATCG[1][0]+R_Pos_ATCG[2][0]+R_Pos_ATCG[3][0]+R_Pos_ATCG[4][0]+R_Pos_ATCG[5][0]+R_Pos_ATCG[6][0]+R_Pos_ATCG[7][0]
 
-            S_val = getSibVal(S_AllAry[misPos[0]],1)
+            S_val = getHomoVal(S_AllAry[misPos[0]],1)
 
             if((fixData.seq[misPos[0]] != S_val) and S_val !=""):
                diff_D_T = True
@@ -336,7 +305,8 @@ def fix_pos_homo_read_pattern(fixData,S_AllAry,R_MisAry,R_Ary_bam,ST):
             if(S_val!="" and diff_D_T  and R_precentFlag):
                ary = [misPos[0],S_val]
                count += 1
-               pos_ary.append(ary)             
+               pos_ary.append(ary)
+
             elif(reads_all>=4 or reads_all <=(len(fixData.seq)-5)):    
                 q_all = 0
                 n_sum = 0
@@ -348,15 +318,14 @@ def fix_pos_homo_read_pattern(fixData,S_AllAry,R_MisAry,R_Ary_bam,ST):
                     n_sum += R_Ary_bam[reads_all][j][0]
                     q_all += R_Ary_bam[reads_all][j][1]
                 if(q_all/n_sum < 15):
-                    P_val,patt = pattern(ST,local_actg)
+                    P_val,patt = pattern(fixData.spPattern,local_actg)
                     if(patt):
-                        H_val = getSibVal(S_AllAry[reads_all],0.7)
-                        if(H_val == ''):
-                            ary = [reads_all,P_val]
-                            pos_ary.append(ary)
-                        else:
-                            ary = [reads_all,H_val]
-                            pos_ary.append(ary)
+                        ary = [reads_all,P_val]
+                        pos_ary.append(ary)
+                    else:
+                        H_val = getHomoVal(S_AllAry[reads_all],0.7)
+                        ary = [reads_all,H_val]
+                        pos_ary.append(ary)
         else:
             q_all = 0
             n_sum = 0
@@ -370,56 +339,19 @@ def fix_pos_homo_read_pattern(fixData,S_AllAry,R_MisAry,R_Ary_bam,ST):
                 n_sum += R_Ary_bam[reads_all][j][0]
                 q_all += R_Ary_bam[reads_all][j][1] 
             if(n_sum == 0):
-             continue
-            if(q_all/n_sum < 10):
-                P_val,patt = pattern(ST,local_actg)
+              continue
+            if(q_all/n_sum < 15):
+                P_val,patt = pattern(fixData.spPattern,local_actg)
                 if(patt):
-                    H_val = getSibVal(S_AllAry[reads_all],0.7)
-                    if(H_val == ''):
-                        ary = [reads_all,P_val]
-                        pos_ary.append(ary)
-                    #else:
-                    elif(H_val != fixData.seq[reads_all]):
-                        ary = [reads_all,H_val]
-                        pos_ary.append(ary)
+                    ary = [reads_all,P_val]
+                    pos_ary.append(ary)
+                else:
+                    H_val = getHomoVal(S_AllAry[reads_all],0.7)
+                    ary = [reads_all,H_val]
+                    pos_ary.append(ary)
     return pos_ary
 
-def getMisPosVal(R_MisAry,R_AllAry,S_AllAry,DraftSeq):
-      posAry = []       
-      
-      for misPos in R_MisAry:
-        if(misPos[0] == 0):
-         continue
-
-        S_val=""
-        S_percentRate = 1
-        diff_D_T = False
-        R_precentFlag = True
-     
-        R_Pos_ATCG = R_AllAry[misPos[0]]
-        R_ATCG_Total = R_Pos_ATCG[0][0]+R_Pos_ATCG[1][0]+R_Pos_ATCG[2][0]+R_Pos_ATCG[3][0]+R_Pos_ATCG[4][0]+R_Pos_ATCG[5][0]+R_Pos_ATCG[6][0]+R_Pos_ATCG[7][0]
- 
-        S_val = getSibVal(S_AllAry[misPos[0]],1)
-              
-  
-        if((DraftSeq[misPos[0]] != S_val) and S_val !=""):
-           diff_D_T = True
-
-        if((R_AllAry[misPos[0]][0][0]+R_AllAry[misPos[0]][4][0])>(R_ATCG_Total*0.95) ):
-          R_precentFlag = False   
-        elif((R_AllAry[misPos[0]][1][0]+R_AllAry[misPos[0]][5][0])>(R_ATCG_Total*0.95)):
-          R_precentFlag = False 
-        elif((R_AllAry[misPos[0]][2][0]+R_AllAry[misPos[0]][6][0])>(R_ATCG_Total*0.95) ):
-          R_precentFlag = False 
-        elif((R_AllAry[misPos[0]][3][0]+R_AllAry[misPos[0]][7][0])>(R_ATCG_Total*0.95) ):
-          R_precentFlag = False  
- 
           
-        if(S_val!="" and diff_D_T  and R_precentFlag):                 
-           ary = [misPos[0],S_val]
-           posAry.append(ary) 
-         
-      return posAry
       
 def getATCG_pos_use(index:int):
    if(index == 0):
@@ -470,17 +402,28 @@ def getSeq(fixAry,fixData):
     return record
 
 
-def fixProcess(fixAry,S_arr,fixData,fileName):#fix the draft
+def fixProcess(fixAry,fixData,fileName):#fix the draft
     
     record = getSeq(fixAry,fixData)
     contig_output_filePath=write_for_new_fasta(record,fixData.output_dir+"debug",fixData.contig_id+"_modpolish")
     return contig_output_filePath
+def check_ATCG( char ):
+    if char == 'A' or char == 'a':  # A:0, T:1, C:2, G:3
+        return 0
+    elif char == 'T' or char == 't':
+        return 1
+    elif char == 'C' or char == 'c':
+        return 2
+    elif char == 'G' or char == 'g':
+        return 3
+    elif char == 'N' or char == 'n':
+        return 4
 
 def MismatchPileup(file_name, genome_size):
 
     timestr = time.strftime("[%Y/%m/%d %H:%M]")
     sys.stderr.write(TextColor.GREEN + str(timestr) + " INFO:star Homo files pileup with sequence length: "+ str(genome_size)  + "\n" + TextColor.END)
-     
+
 
     LONG_DELETION_LENGTH = 50
     misAry = np.array([np.array([0,np.zeros(8)])for i in range(genome_size)])
@@ -488,228 +431,112 @@ def MismatchPileup(file_name, genome_size):
     arr = np.zeros((genome_size, 9), dtype=np.int)
     coverage = np.zeros(genome_size, dtype=np.int)
     ins = np.zeros((genome_size, ins_len, 4), dtype=np.int)
-    over_ins = [] 
-    with open(file_name, 'r') as f:        
-        for line in f:
-            line = line.split()            
-            t_start = line[7] #reference
-           
-            if line[11] != '0': #mapping quality != 0
-              cigar = line[-1]
-              start_pos = int(t_start)                
-              flag = 0
-              longdel_count = 0
-              longdel_status = 0
-              strain = line[4]#取正反股
-              if(start_pos < genome_size):              
-               for i in cigar: # ex. =ATC*c 
-                    if(start_pos>=genome_size):
-                     break
-
-                    if i == 'A' or i == 'a':  # A:0, T:1, C:2, G:3
-                        base = 0                     	
-                    elif i == 'T' or i == 't':
-                        base = 1
-                    elif i == 'C' or i == 'c':
-                        base = 2
-                    elif i == 'G' or i == 'g':
-                        base = 3
-                    if i == '=': #match:1
-                        flag = 1
-                    elif i == '*': #mismatch:2
-                        flag = 2
-                        mismatch = 0
-                    elif i == '+': #insertion
-                        flag = 3
-                        ins_pos = 0
-                        over_ins = []
-                    elif i == '-': #deletion
-                        flag = 4
-                        longdel_status = 0
-                    
-                    elif flag == 1:
-                       
-                        longdel_count = 0                                        
-                        coverage[start_pos] += 1
-    
-                        if(strain == "+"):
-                          arr[start_pos][base] += 1  
-                        if(strain == "-"):
-                         pos = base +5
-                         arr[start_pos][pos] += 1  
-                        
-                        start_pos += 1 
-                    elif flag == 2: 
-                        # *gc
-                        # -01
-                        # 01
-                        longdel_count = 0
-                        if mismatch != 1:
-                          mismatch += 1
-                          misAry[start_pos][0] = start_pos
-                          
-                          if(strain == "+"):
-                            misAry[start_pos][1][base] += 1
-                          if(strain == "-"): 
-                            pos  = base + 4
-                            misAry[start_pos][1][pos] += 1
-
-                        else:
-                          if(strain == "+"):
-                            arr[start_pos][base] += 1
-                          if(strain == "-"): 
-                            pos  = base + 5
-                            arr[start_pos][pos] += 1
-
-                          coverage[start_pos] += 1 
-                          start_pos += 1
-    
-                    elif flag == 3: 
-                        #+AAAAA
-                        #-0123
-                        #01234
-                        longdel_count = 0
-                        if ins_pos < ins_len:
-                            ins[start_pos-1][ins_pos][base] += 1
-                            ins_pos += 1
-                            over_ins.append(base)
-                        elif ins_pos == ins_len:
-                            for x,y in zip(range(ins_len), over_ins):
-                                ins[start_pos-1][x][y] -= 1
-                            over_ins = []                                                    
-                    elif flag == 4:                    
-                        if longdel_status == 0:
-                            longdel_count += 1
-                        if longdel_count > LONG_DELETION_LENGTH and longdel_status == 0:
-                            for i in range(1,LONG_DELETION_LENGTH + 1):
-                                arr[start_pos-i][4] -= 1
-                                coverage[start_pos-i] -= 1  
-                                                       
-                            longdel_status = 1
-                            longdel_count = 0
-                        elif longdel_status != 1:
-                            arr[start_pos][4] += 1
-                            coverage[start_pos] += 1
-                   
-                        start_pos+=1       
-  
-        return misAry,arr
-def MismatchPileup_read_bam(bam,genome_size):
-    LONG_DELETION_LENGTH = 50
-    misAry = np.array([np.array([0,np.zeros(8)])for i in range(genome_size)])
-    ins_len = 7
-    arr = np.zeros((genome_size, 9,3), dtype=np.int)
-    coverage = np.zeros(genome_size, dtype=np.int)
-    ins = np.zeros((genome_size, ins_len, 4), dtype=np.int)
     over_ins = []
+
+    with open(file_name, 'r') as f:
+      for line in f:
+        line = line.split()
+        t_start = line[7] #reference
+
+        if line[11] != '0': #mapping quality != 0
+          cigar = line[-1]
+          start_pos = int(t_start)
+          flag = 0
+          longdel_count = 0
+          longdel_status = 0
+          if line[4] == "-":#取正反股
+            reverse = 5
+          else:
+            reverse = 0
+
+          i = 5
+          cigar_len = len( cigar )
+          if( start_pos < genome_size ):
+            while i < cigar_len:
+              if(start_pos>=genome_size):
+                break
+
+              if cigar[i] == "=":
+                i += 1
+                while i < cigar_len and cigar[i] != "=" and cigar[i] != "*" and cigar[i] != "-" and cigar[i] != "+":
+                  base = check_ATCG( cigar[i] )
+                  if base != 4: # cigar[i] != 'N' or 'n'
+                    arr[start_pos][base + reverse] += 1
+
+                  start_pos += 1
+                  i += 1
+
+              elif cigar[i] == "*":
+
+                #base = check_ATCG( cigar[i+1] ) #正解
+                #misAry[start_pos][1][base + reverse-1] += 1
+
+                base = check_ATCG( cigar[i+2] ) #原本的
+                if base != 4: # cigar[i] != 'N' or 'n'
+                  arr[start_pos][base + reverse] += 1
+
+                start_pos +=1
+                i += 3
+
+              elif cigar[i] == "+": #start_pos don't need to plus
+                i += 1
+                while i < cigar_len and cigar[i] != "=" and cigar[i] != "*" and cigar[i] != "-" and cigar[i] != "+":
+                  i += 1
+
+              elif cigar[i] == "-":
+                i += 1
+
+              else:      #ATCG behind "-"
+                i += 1
+                start_pos += 1
+
+    return misAry,arr
+
+def MismatchPileup_read_bam(bam, genome_size, ref_seq , contig_name):
+    misAry = np.array([np.array([0,np.zeros(8)])for i in range(genome_size)])
+    arr = np.zeros((genome_size, 9,3), dtype=np.int)
     totalCovergae = 0
     bamData = pysam.AlignmentFile(bam,'rb')
+    ref_name = bamData.get_reference_name(0)
     for each_read in bamData.fetch(until_eof=True):
         x = each_read.mapping_quality
-        if(x == 0):
-            continue
-        for cs in range(len(each_read.tags)-1,0,-1):
-            if(each_read.tags[cs][0] == 'cs'):
-                cigar = each_read.tags[cs][1]
-                break
-        start_pos = each_read.pos
-        base_quality = each_read.query_alignment_qualities
-        pos_counter = 0
-        flag = 0
-        longdel_count = 0
-        longdel_status = 0
+        if(x == 0 or each_read.reference_name != contig_name):
+          continue
 
-       
-        if(each_read.is_reverse == True):
-            reverse = 4
-        else:
-            reverse = 0
-        for i in cigar: # ex. =ATC*c
-            if(start_pos>=genome_size):
-               break
+        #start_pos = each_read.pos
+        base_quality = each_read.query_qualities
 
-            if i == 'A' or i == 'a':  # A:0, T:1, C:2, G:3
-                base = 0
-            elif i == 'T' or i == 't':
-                base = 1
-            elif i == 'C' or i == 'c':
-                base = 2
-            elif i == 'G' or i == 'g':
-                base = 3
+        qseq = each_read.query_sequence
 
-            if i == '=': #match:1
-                flag = 1
-            elif i == '*': #mismatch:2
-                flag = 2
-                mismatch = 0
-            elif i == '+': #insertion
-                flag = 3
-                ins_pos = 0
-                over_ins = []
-            elif i == '-': #deletion
-                flag = 4
-                longdel_status = 0
-            elif flag == 1:
-                longdel_count = 0
-                arr[start_pos][reverse + base][0] += 1
-               
-                arr[start_pos][reverse + base][1] += base_quality[pos_counter]
-                if base_quality[pos_counter] < 10:
-                    arr[start_pos][reverse + base][2] += 1
-                coverage[start_pos] += 1
-                pos_counter += 1
-                start_pos += 1
-                totalCovergae +=1
-          
-            elif flag == 2:
-                # *gc
-                # -01
-                # 01
-                longdel_count = 0
-                if mismatch != 1:
-                    mismatch += 1
-                    misAry[start_pos][0] = start_pos
-                    misAry[start_pos][1][reverse+base] += 1
-                    
-                else:
-                    arr[start_pos][reverse+base][0] += 1
-                    arr[start_pos][reverse + base][1] += base_quality[pos_counter]
-                    if base_quality[pos_counter] < 10:
-                        arr[start_pos][reverse + base][2] += 1
-                    coverage[start_pos] += 1
-                    start_pos += 1
-                    pos_counter += 1
-                    mismatch = 0
-                    totalCovergae +=1
-                    
-            elif flag == 3:
-                #+AAAAA
-                #-0123
-                #01234
-                longdel_count = 0
-               
-                pos_counter += 1
-                if ins_pos < ins_len:
-                    ins[start_pos-1][ins_pos][base] += 1
-                    ins_pos += 1
-                    over_ins.append(base)
-                elif ins_pos == ins_len:
-                    for x,y in zip(range(ins_len), over_ins):
-                        ins[start_pos-1][x][y] -= 1
-                    over_ins = []
-            elif flag == 4:
-                if longdel_status == 0:
-                    longdel_count += 1
-                if longdel_count > LONG_DELETION_LENGTH and longdel_status == 0:
-                    for i in range(1,LONG_DELETION_LENGTH + 1):
-                        arr[start_pos-i][8][0] -= 1
-                        coverage[start_pos-i] -= 1
-                        totalCovergae -=1
-                    longdel_status = 1
-                    longdel_count = 0
-                elif longdel_status != 1:
-                    arr[start_pos][8][0] += 1
-                    coverage[start_pos] += 1
-                    totalCovergae +=1
-                start_pos+=1    
+        if qseq == None:
+          continue
+
+        for qpos, refpos in each_read.get_aligned_pairs(True):
+
+          if qseq[qpos] == 'A':
+            if ref_seq[refpos] != 'A':
+              misAry[refpos][0] = refpos
+
+            arr[refpos][0][0] += 1
+            arr[refpos][0][1] += base_quality[qpos]
+          elif qseq[qpos] == 'T':
+            if ref_seq[refpos] != 'T':
+              misAry[refpos][0] = refpos
+
+            arr[refpos][1][0] += 1
+            arr[refpos][1][1] += base_quality[qpos]
+          elif qseq[qpos] == 'C':
+            if ref_seq[refpos] != 'C':
+              misAry[refpos][0] = refpos
+
+            arr[refpos][2][0] += 1
+            arr[refpos][2][1] += base_quality[qpos]
+          elif qseq[qpos] == 'G':
+            if ref_seq[refpos] != 'G':
+              misAry[refpos][0] = refpos
+
+            arr[refpos][3][0] += 1
+            arr[refpos][3][1] += base_quality[qpos]
+
+    #totalCovergae = bamData.count_coverage( ref_name, quality_threshold = 0 )
     return misAry,arr,totalCovergae

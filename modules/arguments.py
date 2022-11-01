@@ -187,7 +187,7 @@ def add_modpolish_arguments(parser):
         "--fasta",
         type = str,
         required  = True,
-        help="fasta file"
+        help="[REQUIRED] fasta file"
     )
     parser.add_argument(
         "-q",
@@ -195,7 +195,7 @@ def add_modpolish_arguments(parser):
         type = str,
         required  = False,
         default = "",
-        help="fastq file"
+        help="[ONE OF FASTQ OR BAM IS REQUIRED] fastq file"
     )
     parser.add_argument(
         "-b",
@@ -203,7 +203,7 @@ def add_modpolish_arguments(parser):
         type = str,
         required  = False,
         default = "",
-        help="bam file"
+        help="[ONE OF FASTQ OR BAM IS REQUIRED] bam file"
     )
     parser.add_argument(
         "-o",
@@ -245,13 +245,12 @@ def add_modpolish_arguments(parser):
     )
     parser.add_argument(
         "-l",
-        "--sibilings_files",
+        "--homologous",
         type=str,
         required=False,
         nargs="+",
         default="",
-        help="draft siblings"
-    )
-    
+        help="local homolohous genomes DB [no]"
+    ) 
     
     

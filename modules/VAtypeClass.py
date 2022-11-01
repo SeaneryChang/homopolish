@@ -2,8 +2,8 @@ class FixSNP():
     def __init__(self):
         self._seq = ""
         self._reads_file = ""
-        self._sibilings = ""
         self._sketch_path = ""
+        self._homologous = ""
         self._output_dir = ""
         self._mash_threshold = 0.95
         self.dl_contig_nums = 20
@@ -89,16 +89,15 @@ class FixSNP():
     def reads_file(self, value):
         self._reads_file = value
         
-        
-        
-#   sibilings:draft_gem的 sibilings          
+#   homologous genomes of draft_gem          
     @property
-    def sib_files(self):
-        return self._sibilings
+    def homo_files(self):
+        return self._homologous
 
-    @sib_files.setter
-    def sib_files(self, value):
-        self._sibilings = value
+    @homo_files.setter
+    def homo_files(self, value):
+        self._homologous = value        
+        
        
         
     #sketch path         
@@ -119,7 +118,7 @@ class FixSNP():
     def output_dir(self, value):
         self._output_dir = value
 
-    #mash_threshold  相似度     
+    #mash_threshold     
     @property
     def mash_threshold(self):
         return self._mash_threshold
@@ -128,7 +127,7 @@ class FixSNP():
     def mash_threshold(self, value):
         self._mash_threshold = value
         
-    #設定下載siblings數量    
+    #set download num of homologous genomes    
     @property
     def dl_contig_nums(self):
         return self._dl_contig_nums
@@ -137,7 +136,7 @@ class FixSNP():
     def dl_contig_nums(self, value):
         self._dl_contig_nums = value
         
-    #給mash的fa檔案   
+    #fasta file for mash   
     @property
     def draft_genome_file(self):
         return self._genome_file
@@ -146,7 +145,7 @@ class FixSNP():
     def draft_genome_file(self, value):
         self._genome_file = value
         
-    #fa檔案的contig_id  
+    #contig_id of fasta
     @property
     def contig_id(self):
         return self._contig_id
@@ -156,7 +155,7 @@ class FixSNP():
         self._contig_id = value
         
     
-    #remove siblings gz file path  
+    #remove homologous genomes gz file path  
     @property
     def rmFilePath(self):
         return self._rmFilePath
@@ -212,9 +211,4 @@ class FixSNP():
     @get_EorCSV_Flag.setter
     def get_EorCSV_Flag(self, value):
         self._getErrorPosCSV = value   
-        
-        
-  
-    
-    
         

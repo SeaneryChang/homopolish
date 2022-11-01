@@ -201,7 +201,7 @@ def download(path, ncbi_id, url_list,contig_name,coverage,distance):
     
     db_dir = path + '/homologous_sequences/'
     db_dir = FileManager.handle_output_directory(db_dir)
-    max_pool_size = 3 #API rate limit exceeded, can't go higher
+    max_pool_size = 1 #API rate limit exceeded, can't go higher
     cpus = multiprocessing.cpu_count()
     pool = multiprocessing.Pool(cpus if cpus < max_pool_size else max_pool_size)
     All_db=[]
